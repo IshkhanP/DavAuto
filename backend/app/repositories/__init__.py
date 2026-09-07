@@ -1,0 +1,1 @@
+from app.repositories.car_repository import CarRepository  # noqa: F401

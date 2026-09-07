@@ -1,0 +1,1 @@
+from app.middleware.security import SecurityHeadersMiddleware  # noqa: F401

@@ -1,0 +1,63 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: bsc_postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: blacksharkcars
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+    container_name: bsc_backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg2://postgres:postgres@postgres:5432/blacksharkcars
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev-jwt-secret-change-me}
+      JWT_REFRESH_SECRET_KEY: ${JWT_REFRESH_SECRET_KEY:-dev-refresh-secret-change-me}
+      CORS_ORIGINS: http://localhost:5173,http://localhost:3000
+      STORAGE_TYPE: local
+      STORAGE_LOCAL_PATH: /app/storage/uploads
+      STORAGE_PUBLIC_URL: http://localhost:8000/static
+    ports:
+      - "8000:8000"
+    volumes:
+      - backend_storage:/app/storage/uploads
+    command: >
+      bash -c "alembic upgrade head &&
+      python -m scripts.seed &&
+      uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend.Dockerfile
+    container_name: bsc_frontend
+    depends_on:
+      - backend
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_API_URL: /api/v1
+    volumes:
+      - frontend_node_modules:/app/node_modules
+
+volumes:
+  postgres_data:
+  backend_storage:
+  frontend_node_modules:

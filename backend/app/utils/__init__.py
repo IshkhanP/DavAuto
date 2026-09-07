@@ -1,0 +1,1 @@
+from app.utils.slug import slugify  # noqa: F401
