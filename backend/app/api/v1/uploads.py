@@ -12,6 +12,7 @@ from typing import Optional, List
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from PIL import Image
+from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.database import get_db
@@ -78,9 +79,20 @@ async def upload_car_image(
         width=width,
         height=height,
         display_order=len(car.images),
+        # First image uploaded for a car should default to being the main one,
+        # otherwise the listing has images but no main image until the user
+        # manually picks one.
+        is_main=(len(car.images) == 0),
     )
     db.add(image)
-    db.flush()
+    # IMPORTANT: previously this only called db.flush(), which keeps the row
+    # inside the current transaction only. Since get_db() never commits on
+    # its own, the row was rolled back the moment the request finished and
+    # the session closed — so the very next request (reorder / set-main)
+    # queried a fresh session that legitimately had no record of the image.
+    # That was the root cause of the reorder 400s and set-main 404s.
+    db.commit()
+    db.refresh(image)
 
     return {
         "id": str(image.id),
@@ -89,6 +101,7 @@ async def upload_car_image(
         "width": width,
         "height": height,
         "display_order": image.display_order,
+        "is_main": image.is_main,
     }
 
 
@@ -108,9 +121,24 @@ async def delete_car_image(
     if car.seller_id != user.id and not is_admin:
         raise HTTPException(status_code=403, detail="Not allowed")
 
+    was_main = image.is_main
+
     storage = get_storage()
     await storage.delete(image.storage_key)
     db.delete(image)
+    db.flush()
+
+    # If we just deleted the main image, promote the next remaining one
+    # (by display_order) so the listing never ends up with zero main images.
+    if was_main:
+        remaining = db.execute(
+            select(CarImage)
+            .where(CarImage.car_id == car.id)
+            .order_by(CarImage.display_order)
+        ).scalars().all()
+        if remaining:
+            remaining[0].is_main = True
+
     db.commit()
     return {"deleted": True}
 
@@ -219,7 +247,8 @@ async def upload_car_video(
         display_order=len(car.videos),
     )
     db.add(video)
-    db.flush()
+    db.commit()
+    db.refresh(video)
     return {"id": str(video.id), "url": video.url}
 
 

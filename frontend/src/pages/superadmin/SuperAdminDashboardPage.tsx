@@ -5,18 +5,20 @@ import { useAsync } from "@/hooks/useAsync";
 import { ErrorState, LoadingBlock } from "@/components/States";
 
 export const SuperAdminDashboardPage: React.FC = () => {
-  const { data, loading, error } = useAsync(() => adminService.stats(), []);
+  const { data, loading, error, reload } = useAsync(() => adminService.stats(), []);
   if (loading) return <LoadingBlock />;
-  if (error) return <ErrorState />;
+  if (error) return <ErrorState onRetry={reload} />;
   if (!data) return null;
 
+  // NOTE: previously "Listings" and "Dealers" both incorrectly pointed at
+  // /super-admin/users. Fixed to point at pages that actually show that data.
   const tiles = [
-    { label: "Users", value: data.total_users, href: "/super-admin/users", color: "#2563eb" },
-    { label: "Listings", value: data.total_listings, href: "/super-admin/users", color: "#16a34a" },
-    { label: "Dealers", value: data.total_dealers, href: "/super-admin/users", color: "#f59e0b" },
-    { label: "Pending Reports", value: data.pending_reports, href: "/super-admin/audit-logs", color: "#dc2626" },
+    { label: "Users", value: data.total_users, href: "/super-admin/admins", color: "#2563eb" },
+    { label: "Listings", value: data.total_listings, href: "/admin/listings", color: "#16a34a" },
+    { label: "Dealers", value: data.total_dealers, href: "/super-admin/admins", color: "#f59e0b" },
+    { label: "Pending Reports", value: data.pending_reports, href: "/admin/reports", color: "#dc2626" },
     { label: "New Users (30d)", value: data.new_users_last_30d, href: "/super-admin/audit-logs", color: "#9ca3af" },
-    { label: "New Listings (30d)", value: data.new_listings_last_30d, href: "/super-admin/audit-logs", color: "#9ca3af" },
+    { label: "New Listings (30d)", value: data.new_listings_last_30d, href: "/admin/listings", color: "#9ca3af" },
   ];
 
   return (
@@ -37,9 +39,35 @@ export const SuperAdminDashboardPage: React.FC = () => {
         ))}
       </div>
 
+      {/* Moderation section: surfaces the data that used to require jumping
+          into a separate /admin dashboard, so Super Admin is a single
+          "see everything" screen. */}
+      <h2 style={{ color: "#fff", marginBottom: 16 }}>Moderation</h2>
+      <p style={{ color: "#9ca3af", marginBottom: 16, fontSize: 13 }}>
+        Everything the Admin console can do is available here too, so you don't need
+        a separate dashboard for day-to-day moderation.
+      </p>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12, marginBottom: 32 }}>
+        <ManageCard
+          to="/admin/listings?status=PENDING"
+          title="Pending Listings"
+          desc={`${data.pending_listings} awaiting approval`}
+        />
+        <ManageCard
+          to="/admin/reports"
+          title="Open Reports"
+          desc={`${data.pending_reports} unresolved`}
+        />
+        <ManageCard
+          to="/admin/listings"
+          title="All Listings"
+          desc={`${data.active_listings} active · ${data.sold_listings} sold`}
+        />
+      </div>
+
       <h2 style={{ color: "#fff", marginBottom: 16 }}>Manage</h2>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
-        <ManageCard to="/super-admin/admins" title="Administrators" desc="Create and manage admin accounts" />
+        <ManageCard to="/super-admin/admins" title="Users" desc="Every account — edit, suspend, delete, change role" />
         <ManageCard to="/super-admin/roles" title="Roles & Permissions" desc="Build custom roles" />
         <ManageCard to="/super-admin/categories" title="Categories" desc="Vehicle types" />
         <ManageCard to="/super-admin/makes" title="Makes & Models" desc="Catalog" />

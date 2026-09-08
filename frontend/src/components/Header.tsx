@@ -106,7 +106,16 @@ export const Header: React.FC = () => {
                     Notifications {unread && unread.unread > 0 && <span className="badge badge-red">{unread.unread}</span>}
                   </Link>
                   <Link to="/dashboard/profile" onClick={() => setMenuOpen(false)} style={menuItemStyle}>Profile</Link>
-                  {user.roles.some((r) => ["ADMIN", "SUPER_ADMIN"].includes(r)) && (
+                  {/*
+                    NOTE: previously showed BOTH an "Admin" link and a
+                    "Super Admin" link to super admins, which is exactly the
+                    "two dashboards" confusion being fixed. Now a super admin
+                    only ever sees a single "Super Admin" entry point (which
+                    itself links out to /admin/listings and /admin/reports
+                    when needed). A plain ADMIN (not super admin) still sees
+                    the Admin link as before.
+                  */}
+                  {user.roles.includes("ADMIN") && !user.roles.includes("SUPER_ADMIN") && (
                     <Link to="/admin" onClick={() => setMenuOpen(false)} style={menuItemStyle}>Admin</Link>
                   )}
                   {user.roles.includes("SUPER_ADMIN") && (

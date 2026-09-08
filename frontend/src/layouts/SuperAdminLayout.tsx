@@ -2,11 +2,15 @@ import React from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import { Logo } from "@/components/Logo";
 
+// NOTE: previously had both an "Administrators" link (-> /super-admin/admins)
+// AND a separate "Users" link (-> /super-admin/users rendering AdminUsersPage).
+// That was the source of "two dashboards" confusion. Consolidated into one
+// "Users" link that points at SuperAdminAdminsPage, which already lists every
+// account (not just admins) with full role/status editing.
 const items = [
   { to: "/super-admin", label: "Dashboard", end: true },
-  { to: "/super-admin/admins", label: "Administrators" },
+  { to: "/super-admin/admins", label: "Users" },
   { to: "/super-admin/roles", label: "Roles & Permissions" },
-  { to: "/super-admin/users", label: "Users" },
   { to: "/super-admin/categories", label: "Categories" },
   { to: "/super-admin/makes", label: "Makes & Models" },
   { to: "/super-admin/locations", label: "Locations" },

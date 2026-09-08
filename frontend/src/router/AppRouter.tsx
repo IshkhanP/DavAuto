@@ -78,7 +78,9 @@ export const AppRouter: React.FC = () => {
         <Route path="reports" element={<AdminReportsPage />} />
       </Route>
 
-      {/* Super Admin */}
+      {/* Super Admin — single consolidated dashboard.
+          NOTE: the old "/super-admin/users" route (rendering AdminUsersPage,
+          a near-duplicate of SuperAdminAdminsPage) has been removed. */}
       <Route path="/super-admin" element={<SuperAdminRoute><SuperAdminLayout /></SuperAdminRoute>}>
         <Route index element={<SuperAdminDashboardPage />} />
         <Route path="admins" element={<SuperAdminAdminsPage />} />
@@ -89,7 +91,6 @@ export const AppRouter: React.FC = () => {
         <Route path="locations" element={<SuperAdminLocationsPage />} />
         <Route path="promotions" element={<SuperAdminPromotionsPage />} />
         <Route path="settings" element={<SuperAdminSettingsPage />} />
-        <Route path="users" element={<AdminUsersPage />} />
       </Route>
 
       <Route path="*" element={<div style={{ padding: 80, textAlign: "center" }}><h1>404</h1><p>Page not found</p></div>} />
