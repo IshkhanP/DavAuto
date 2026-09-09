@@ -179,6 +179,13 @@ export const CONTACT_METHODS = [
 ] as const;
 export type ContactMethod = typeof CONTACT_METHODS[number];
 
+// One day's worth of view counts for a listing (used for the "views per
+// day" stats chart on the seller's dashboard).
+export interface CarDailyView {
+  view_date: string;
+  count: number;
+}
+
 export interface Dealer {
   id: string;
   owner_id: string;

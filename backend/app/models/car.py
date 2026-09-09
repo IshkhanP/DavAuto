@@ -2,10 +2,10 @@
 from __future__ import annotations
 from typing import List, Optional
 import uuid
-from datetime import datetime
+from datetime import datetime, date
 
 from sqlalchemy import (
-    String, Integer, ForeignKey, Boolean, DateTime, Text, Numeric, Index, func, UniqueConstraint
+    String, Integer, ForeignKey, Boolean, DateTime, Date, Text, Numeric, Index, func, UniqueConstraint
 )
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID, ARRAY
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -65,7 +65,8 @@ class Car(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     phone_country_code: Mapped[Optional[str]] = mapped_column(String(8), nullable=True)
     phone_number: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
     # Comma-separated list of preferred contact channels. Allowed values:
-    # PHONE, WHATSAPP, VIBER, TELEGRAM, CHAT (in-app message).
+    # PHONE, WHATSAPP, VIBER, TELEGRAM, CHAT (chat on site, i.e. the
+    # built-in messaging under /dashboard/messages — not a separate app).
     contact_methods: Mapped[Optional[str]] = mapped_column(String(120), nullable=True, default="PHONE,CHAT")
 
     is_featured: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
@@ -89,6 +90,7 @@ class Car(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     videos: Mapped[List["CarVideo"]] = relationship("CarVideo", back_populates="car", cascade="all, delete-orphan")
     features: Mapped[List["CarFeature"]] = relationship("CarFeature", back_populates="car", cascade="all, delete-orphan")
     favorites: Mapped[List["Favorite"]] = relationship("Favorite", back_populates="car", cascade="all, delete-orphan")
+    daily_views: Mapped[List["CarDailyView"]] = relationship("CarDailyView", back_populates="car", cascade="all, delete-orphan")
 
 
 class CarImage(Base, UUIDPrimaryKeyMixin, TimestampMixin):
@@ -148,3 +150,26 @@ class Favorite(Base):
 
     user: Mapped["User"] = relationship("User")
     car: Mapped["Car"] = relationship("Car", back_populates="favorites")
+
+
+class CarDailyView(Base, UUIDPrimaryKeyMixin):
+    """Aggregated per-day view counter for a listing.
+
+    One row per (car_id, view_date), incremented every time the public
+    car-detail endpoint records a view (see
+    ``CarRepository.increment_views``). This powers the "how many people
+    viewed your listing today / this week" statistic sellers see on their
+    own listings — the plain ``Car.views_count`` column only tracks the
+    lifetime total, with no way to break it down by day.
+    """
+    __tablename__ = "car_daily_views"
+    __table_args__ = (
+        UniqueConstraint("car_id", "view_date", name="uq_car_daily_view"),
+        Index("ix_car_daily_views_view_date", "view_date"),
+    )
+
+    car_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("cars.id", ondelete="CASCADE"), nullable=False, index=True)
+    view_date: Mapped[date] = mapped_column(Date, nullable=False)
+    count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+    car: Mapped["Car"] = relationship("Car", back_populates="daily_views")

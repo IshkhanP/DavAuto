@@ -10,12 +10,15 @@ import { formatCurrency, formatMileage, fuelLabel, timeAgo } from "@/utils/forma
 import toast from "react-hot-toast";
 import type { CarDetail, CarCard as CarCardData, ContactMethod } from "@/types";
 
+// NOTE: "CHAT" is the built-in messaging on the website itself
+// (/dashboard/messages) — not a separate app — so it's labeled "Chat on
+// site" rather than "In-app chat" to avoid implying a mobile app is needed.
 const CONTACT_LABEL: Record<ContactMethod, string> = {
   PHONE: "Phone",
   WHATSAPP: "WhatsApp",
   VIBER: "Viber",
   TELEGRAM: "Telegram",
-  CHAT: "In-app chat",
+  CHAT: "Chat on site",
 };
 
 export const CarDetailPage: React.FC = () => {
@@ -202,7 +205,9 @@ export const CarDetailPage: React.FC = () => {
               </button>
               {/* The "Message" button is only shown when CHAT isn't already
                   offered in the contact-methods list (avoids duplication with
-                  the In-app chat button rendered inside the contact section). */}
+                  the "Chat on site" button rendered inside the contact
+                  section below). Both paths open the same on-site messaging
+                  under /dashboard/messages. */}
               {!(car.contact_methods?.includes("CHAT")) && (
                 <button onClick={() => setShowContact(true)} className="btn btn-blue btn-block" disabled={isOwner}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
@@ -309,7 +314,7 @@ export const CarDetailPage: React.FC = () => {
                   )}
                   {car.contact_methods.includes("CHAT") && (
                     <button className="btn btn-blue" onClick={() => setShowContact(true)} disabled={isOwner}>
-                      💬 In-app chat
+                      💬 Chat on site
                     </button>
                   )}
                 </div>
@@ -347,8 +352,11 @@ export const CarDetailPage: React.FC = () => {
       {showContact && (
         <div className="modal-backdrop" onClick={() => setShowContact(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h2 style={{ marginBottom: 8 }}>Contact Seller</h2>
-            <p className="text-sm muted" style={{ marginBottom: 16 }}>Send a message about this vehicle.</p>
+            <h2 style={{ marginBottom: 8 }}>Chat on Site</h2>
+            <p className="text-sm muted" style={{ marginBottom: 16 }}>
+              Send a message about this vehicle using BlackSharkCars' built-in messaging —
+              no separate app needed. You'll find the conversation under "Messages" in your dashboard.
+            </p>
             <textarea
               className="textarea"
               rows={4}

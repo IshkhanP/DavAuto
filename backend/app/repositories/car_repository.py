@@ -1,12 +1,13 @@
 """Repository layer for cars / listings with filter + pagination."""
 from __future__ import annotations
+from datetime import date as _date
 from typing import Optional, Tuple, List, Dict, Any
 import uuid
 
 from sqlalchemy import select, func, and_, or_, desc, asc
 from sqlalchemy.orm import Session, selectinload, joinedload
 
-from app.models.car import Car, CarImage
+from app.models.car import Car, CarImage, CarDailyView
 
 
 SORT_MAP = {
@@ -185,6 +186,35 @@ class CarRepository:
     def increment_views(self, car_id: uuid.UUID) -> None:
         self.db.execute(
             Car.__table__.update().where(Car.id == car_id).values(views_count=Car.views_count + 1)
+        )
+        self._record_daily_view(car_id)
+
+    def _record_daily_view(self, car_id: uuid.UUID) -> None:
+        """Upsert today's row in ``car_daily_views`` so per-day view stats
+        stay accurate. Called from ``increment_views`` on every real page
+        view (the caller is responsible for excluding the owner's own
+        views before calling this).
+        """
+        today = _date.today()
+        existing = self.db.execute(
+            select(CarDailyView).where(
+                CarDailyView.car_id == car_id, CarDailyView.view_date == today
+            )
+        ).scalar_one_or_none()
+        if existing:
+            existing.count = (existing.count or 0) + 1
+        else:
+            self.db.add(CarDailyView(car_id=car_id, view_date=today, count=1))
+
+    def get_daily_views(self, car_id: uuid.UUID, days: int = 14) -> List[CarDailyView]:
+        from datetime import timedelta
+        start = _date.today() - timedelta(days=days - 1)
+        return list(
+            self.db.execute(
+                select(CarDailyView)
+                .where(CarDailyView.car_id == car_id, CarDailyView.view_date >= start)
+                .order_by(CarDailyView.view_date)
+            ).scalars().all()
         )
 
     def get_main_image_url(self, car: Car) -> Optional[str]:

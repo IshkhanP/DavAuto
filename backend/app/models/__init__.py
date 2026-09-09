@@ -3,7 +3,7 @@ from app.core.database import Base  # noqa: F401
 
 from app.models.user import User, Role, Permission, UserRole, RolePermission, RefreshToken, PasswordResetToken, EmailVerificationToken  # noqa: F401
 from app.models.catalog import Category, Make, Model, Location  # noqa: F401
-from app.models.car import Car, CarImage, CarVideo, CarFeature, Favorite  # noqa: F401
+from app.models.car import Car, CarImage, CarVideo, CarFeature, Favorite, CarDailyView  # noqa: F401
 from app.models.messaging import Conversation, ConversationParticipant, Message, Notification  # noqa: F401
 from app.models.dealer import (  # noqa: F401
     Dealer, DealerEmployee, Report, PromotionPackage, UserPromotion,
@@ -18,7 +18,7 @@ __all__ = [
     "User", "Role", "Permission", "UserRole", "RolePermission",
     "RefreshToken", "PasswordResetToken", "EmailVerificationToken",
     "Category", "Make", "Model", "Location",
-    "Car", "CarImage", "CarVideo", "CarFeature", "Favorite",
+    "Car", "CarImage", "CarVideo", "CarFeature", "Favorite", "CarDailyView",
     "Conversation", "ConversationParticipant", "Message", "Notification",
     "Dealer", "DealerEmployee", "Report", "PromotionPackage", "UserPromotion",
     "Payment", "Review", "AuditLog", "SiteSetting",

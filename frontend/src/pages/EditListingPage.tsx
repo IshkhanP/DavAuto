@@ -135,7 +135,11 @@ export const EditListingPage: React.FC = () => {
   const onDrop = (toId: string) => (e: React.DragEvent) => {
     e.preventDefault();
     const fromId = draggingId || e.dataTransfer.getData("text/plain");
-    if (!fromId || fromId === toId) return;
+    if (!fromId || fromId === toId) {
+      setDraggingId(null);
+      setDragOverId(null);
+      return;
+    }
     setImages((prev) => {
       const fromIdx = prev.findIndex((i) => i.id === fromId);
       const toIdx = prev.findIndex((i) => i.id === toId);
@@ -143,9 +147,20 @@ export const EditListingPage: React.FC = () => {
       const next = prev.slice();
       const [moved] = next.splice(fromIdx, 1);
       next.splice(toIdx, 0, moved);
-      const orderedIds = next.map((i) => i.id);
+
+      // Whichever photo ends up first is treated as the cover photo — keep
+      // "is_main" in sync with position so reordering doesn't leave a stale
+      // main image that no longer matches what's shown first in the grid.
+      const reordered = next.map((img, idx) => ({ ...img, is_main: idx === 0 }));
+      const orderedIds = reordered.map((i) => i.id);
       persistOrder(orderedIds);
-      return next;
+
+      if (prev[0]?.id !== reordered[0].id) {
+        uploadsService.setMainImage(car.id, reordered[0].id).catch(() => {
+          toast.error("Could not update main image");
+        });
+      }
+      return reordered;
     });
     setDraggingId(null);
     setDragOverId(null);
@@ -211,7 +226,9 @@ export const EditListingPage: React.FC = () => {
       <section className="card" style={{ padding: 24, marginBottom: 20 }}>
         <h2 style={{ fontSize: 20, marginBottom: 12 }}>Photos</h2>
         <p className="text-sm muted" style={{ marginBottom: 16 }}>
-          Upload additional images, drag to reorder, or set a main photo. JPG, PNG, WebP up to 15MB each.
+          Upload additional images, drag to reorder, or set a main photo. Whichever
+          photo you drag into the first slot automatically becomes the cover photo.
+          JPG, PNG, WebP up to 15MB each.
         </p>
         <div
           onDragOver={(e) => e.preventDefault()}
@@ -311,7 +328,7 @@ export const EditListingPage: React.FC = () => {
           </p>
         )}
         <p className="text-sm muted" style={{ marginTop: 8 }}>
-          Drag the thumbnails to reorder, or use the "Set main" button to make one the cover.
+          Drag the thumbnails to reorder — the first one is always the cover photo.
         </p>
       </section>
     </div>

@@ -50,26 +50,30 @@ def list_admins(
     db: Session = Depends(get_db),
 ):
     _require_super_admin(user)
-    admin_role = db.execute(select(Role).where(Role.slug.in_(["ADMIN", "MODERATOR", "LISTING_MANAGER", "USER_MANAGER", "DEALER_MANAGER", "CONTENT_MANAGER", "FINANCE_MANAGER"]))).scalars().all()
-    admin_role_ids = [r.id for r in admin_role]
 
-    stmt = (
-        select(User)
-        .join(UserRole, UserRole.user_id == User.id)
-        .where(UserRole.role_id.in_(admin_role_ids))
-        .order_by(User.created_at.desc())
-        .distinct()
-    )
+    # NOTE: this endpoint used to filter to only admin-tier roles (ADMIN,
+    # MODERATOR, LISTING_MANAGER, etc.), which meant plain USER accounts
+    # never showed up here at all — even though the frontend
+    # (SuperAdminAdminsPage) treats this as "every user in the system" and
+    # computes counts/filters (Standard users, Dealers, ...) from it. That
+    # mismatch was the root cause of the Users screen — and any counts
+    # derived from it — looking empty or wrong. It now returns every user,
+    # super admins included, with an explicit `is_super_admin` flag so the
+    # frontend can still protect super-admin accounts from deletion/role
+    # changes without needing to guess from the roles list.
+    stmt = select(User).order_by(User.created_at.desc())
     total = db.execute(select(func.count()).select_from(stmt.subquery())).scalar() or 0
     rows = db.execute(stmt.offset((page - 1) * limit).limit(limit)).scalars().unique().all()
     out = []
     for u in rows:
+        role_slugs = [r.role.slug for r in u.roles]
         out.append(AdminOut(
             id=str(u.id), email=u.email, full_name=u.full_name, phone=u.phone,
             status=u.status, is_email_verified=u.is_email_verified,
             last_login_at=u.last_login_at, last_login_ip=u.last_login_ip,
-            roles=[r.role.slug for r in u.roles],
+            roles=role_slugs,
             created_at=u.created_at,
+            is_super_admin=("SUPER_ADMIN" in role_slugs),
         ))
     return PaginatedResponse[AdminOut].build(out, page, limit, total)
 
@@ -115,6 +119,7 @@ def create_admin(
         status=new_user.status, is_email_verified=new_user.is_email_verified,
         last_login_at=new_user.last_login_at, last_login_ip=new_user.last_login_ip,
         roles=[r.role.slug for r in new_user.roles], created_at=new_user.created_at,
+        is_super_admin=False,
     )
 
 
@@ -157,11 +162,13 @@ def update_admin(
 
     db.commit()
     db.refresh(target)
+    role_slugs = [r.role.slug for r in target.roles]
     return AdminOut(
         id=str(target.id), email=target.email, full_name=target.full_name, phone=target.phone,
         status=target.status, is_email_verified=target.is_email_verified,
         last_login_at=target.last_login_at, last_login_ip=target.last_login_ip,
-        roles=[r.role.slug for r in target.roles], created_at=target.created_at,
+        roles=role_slugs, created_at=target.created_at,
+        is_super_admin=("SUPER_ADMIN" in role_slugs),
     )
 
 

@@ -156,6 +156,7 @@ export const CreateListingPage: React.FC = () => {
   const [images, setImages] = useState<CarImage[]>([]);
   const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [savingDraft, setSavingDraft] = useState(false);
   // Per-step error map.  We only validate and surface errors for the section
   // the user clicks "Save section" on, so the rest of the form stays calm.
   const [errorsByStep, setErrorsByStep] = useState<Record<number, Record<string, string>>>({});
@@ -205,10 +206,13 @@ export const CreateListingPage: React.FC = () => {
     });
   };
 
+  // Creates the car record as soon as the minimum info (make/model/year) is
+  // known. Price and mileage default to 0 if not filled in yet — this lets
+  // photos get uploaded, and drafts get saved, before every field is done.
   const ensureCarId = async (): Promise<string> => {
     if (carId) return carId;
-    if (!form.make_id || !form.model_id || !form.year || !form.price || !form.mileage) {
-      throw new Error("Please fill in the required fields in the previous sections");
+    if (!form.make_id || !form.model_id || !form.year) {
+      throw new Error("Please choose a make, model, and year first");
     }
     const payload = {
       make_id: form.make_id,
@@ -216,9 +220,9 @@ export const CreateListingPage: React.FC = () => {
       category_id: form.category_id || null,
       location_id: form.location_id || null,
       year: Number(form.year),
-      price: Number(form.price),
+      price: Number(form.price || 0),
       currency: form.currency,
-      mileage: Number(form.mileage),
+      mileage: Number(form.mileage || 0),
       vin: form.vin || null,
       body_type: form.body_type || null,
       fuel_type: form.fuel_type || null,
@@ -244,6 +248,27 @@ export const CreateListingPage: React.FC = () => {
     const car = await carsService.create(payload);
     setCarId(car.id);
     return car.id;
+  };
+
+  // Single "Save Draft" button (replaces the old per-section save buttons).
+  // Creates the listing if it doesn't exist yet and marks it DRAFT so it's
+  // safely parked in "My Listings" without needing every field filled in —
+  // the seller can come back anytime and finish it before publishing.
+  const saveDraft = async () => {
+    if (!form.make_id || !form.model_id) {
+      toast.error("Please choose a make and model first");
+      return;
+    }
+    try {
+      setSavingDraft(true);
+      const id = await ensureCarId();
+      await carsService.setStatus(id, "DRAFT");
+      toast.success("Draft saved — continue anytime from My Listings");
+    } catch (e: any) {
+      toast.error(e?.message || e?.response?.data?.detail || "Could not save draft");
+    } finally {
+      setSavingDraft(false);
+    }
   };
 
   const handleUpload = async (files: FileList | null) => {
@@ -293,19 +318,6 @@ export const CreateListingPage: React.FC = () => {
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
 
-  const reorderLocal = (fromId: string, toId: string) => {
-    if (fromId === toId) return;
-    setImages((prev) => {
-      const fromIdx = prev.findIndex((i) => i.id === fromId);
-      const toIdx = prev.findIndex((i) => i.id === toId);
-      if (fromIdx < 0 || toIdx < 0) return prev;
-      const next = prev.slice();
-      const [moved] = next.splice(fromIdx, 1);
-      next.splice(toIdx, 0, moved);
-      return next;
-    });
-  };
-
   const persistOrder = async (orderedIds: string[]) => {
     if (!carId) return;
     try {
@@ -328,7 +340,11 @@ export const CreateListingPage: React.FC = () => {
   const onDrop = (toId: string) => (e: React.DragEvent) => {
     e.preventDefault();
     const fromId = draggingId || e.dataTransfer.getData("text/plain");
-    if (!fromId || fromId === toId) return;
+    if (!fromId || fromId === toId) {
+      setDraggingId(null);
+      setDragOverId(null);
+      return;
+    }
     // Reorder and persist atomically
     setImages((prev) => {
       const fromIdx = prev.findIndex((i) => i.id === fromId);
@@ -337,33 +353,23 @@ export const CreateListingPage: React.FC = () => {
       const next = prev.slice();
       const [moved] = next.splice(fromIdx, 1);
       next.splice(toIdx, 0, moved);
-      // Persist the new order
-      const orderedIds = next.map((i) => i.id);
+
+      // Whichever photo ends up first is treated as the cover photo — keep
+      // "is_main" in sync with position instead of requiring a separate
+      // manual "Set main" click every time the order changes.
+      const reordered = next.map((img, idx) => ({ ...img, is_main: idx === 0 }));
+      const orderedIds = reordered.map((i) => i.id);
       persistOrder(orderedIds);
-      return next;
+
+      if (prev[0]?.id !== reordered[0].id && carId) {
+        uploadsService.setMainImage(carId, reordered[0].id).catch(() => {
+          toast.error("Could not update main image");
+        });
+      }
+      return reordered;
     });
     setDraggingId(null);
     setDragOverId(null);
-  };
-
-  // Validate the current section.  Push the errors into the per-section map
-  // and bail.  We also persist the listing to the server so the user can come
-  // back later and pick up where they left off.
-  const saveSection = async (stepIdx: number) => {
-    const errs = validateStep(stepIdx, form);
-    if (Object.keys(errs).length) {
-      setErrorsByStep((prev) => ({ ...prev, [stepIdx]: errs }));
-      toast.error("Please fix the highlighted fields");
-      return;
-    }
-    setErrorsByStep((prev) => ({ ...prev, [stepIdx]: {} }));
-    if (stepIdx === 0 || stepIdx === 1 || stepIdx === 2) {
-      try {
-        await ensureCarId();
-      } catch (e: any) {
-        toast.error(e?.message || "Save failed");
-      }
-    }
   };
 
   const submit = async () => {
@@ -386,6 +392,7 @@ export const CreateListingPage: React.FC = () => {
     try {
       setSubmitting(true);
       const id = await ensureCarId();
+      await carsService.setStatus(id, "ACTIVE");
       toast.success("Listing submitted!");
       localStorage.removeItem("bsc_listing_draft");
       navigate(`/cars/${id}`);
@@ -418,23 +425,33 @@ export const CreateListingPage: React.FC = () => {
     <div style={{ maxWidth: 980, margin: "0 auto" }}>
       <div className="row-between" style={{ marginBottom: 8 }}>
         <h1>Create Listing</h1>
-        <button
-          className="btn btn-ghost btn-sm"
-          onClick={() => {
-            if (confirm("Discard the draft and start over?")) {
-              localStorage.removeItem("bsc_listing_draft");
-              setForm(EMPTY);
-              setCarId(null);
-              setImages([]);
-              setErrorsByStep({});
-            }
-          }}
-        >
-          Reset draft
-        </button>
+        <div className="row" style={{ gap: 8 }}>
+          <button
+            className="btn btn-outline btn-sm"
+            onClick={saveDraft}
+            disabled={savingDraft || submitting}
+          >
+            {savingDraft ? "Saving..." : "Save Draft"}
+          </button>
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={() => {
+              if (confirm("Discard the draft and start over?")) {
+                localStorage.removeItem("bsc_listing_draft");
+                setForm(EMPTY);
+                setCarId(null);
+                setImages([]);
+                setErrorsByStep({});
+              }
+            }}
+          >
+            Reset draft
+          </button>
+        </div>
       </div>
       <p className="muted text-sm" style={{ marginBottom: 24 }}>
-        Your draft is auto-saved as you go. Fill every section, then click <b>Submit listing</b> at the bottom.
+        Fill in what you know, click <b>Save Draft</b> anytime to park it in "My Listings"
+        and finish later, or fill every section and click <b>Submit listing</b> at the bottom to publish.
       </p>
 
       {/* Sticky stepper.  Click a step to jump straight to that section. */}
@@ -468,16 +485,7 @@ export const CreateListingPage: React.FC = () => {
 
       {/* Section 1 — Vehicle */}
       <section id="section-0" className="card" style={{ padding: 24, marginBottom: 20 }}>
-        <div className="row-between" style={{ marginBottom: 12 }}>
-          <h2 style={{ fontSize: 20 }}>1. Vehicle</h2>
-          <button
-            className="btn btn-outline btn-sm"
-            onClick={() => saveSection(0)}
-            disabled={submitting}
-          >
-            Save section
-          </button>
-        </div>
+        <h2 style={{ fontSize: 20, marginBottom: 12 }}>1. Vehicle</h2>
         <p className="text-sm muted" style={{ marginBottom: 16 }}>
           Tell us the make and model of your car.
         </p>
@@ -543,16 +551,7 @@ export const CreateListingPage: React.FC = () => {
 
       {/* Section 2 — Specifications & Contact preferences */}
       <section id="section-1" className="card" style={{ padding: 24, marginBottom: 20 }}>
-        <div className="row-between" style={{ marginBottom: 12 }}>
-          <h2 style={{ fontSize: 20 }}>2. Specifications & Contact</h2>
-          <button
-            className="btn btn-outline btn-sm"
-            onClick={() => saveSection(1)}
-            disabled={submitting}
-          >
-            Save section
-          </button>
-        </div>
+        <h2 style={{ fontSize: 20, marginBottom: 12 }}>2. Specifications & Contact</h2>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }} className="grid-2">
           <Field label="Body type">
             <select className="select" value={form.body_type} onChange={(e) => set({ body_type: e.target.value })}>
@@ -741,16 +740,7 @@ export const CreateListingPage: React.FC = () => {
 
       {/* Section 3 — Price & Location */}
       <section id="section-2" className="card" style={{ padding: 24, marginBottom: 20 }}>
-        <div className="row-between" style={{ marginBottom: 12 }}>
-          <h2 style={{ fontSize: 20 }}>3. Price & Location</h2>
-          <button
-            className="btn btn-outline btn-sm"
-            onClick={() => saveSection(2)}
-            disabled={submitting}
-          >
-            Save section
-          </button>
-        </div>
+        <h2 style={{ fontSize: 20, marginBottom: 12 }}>3. Price & Location</h2>
         <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 12 }}>
           <Field label="Price" required error={errorsByStep[2]?.price}>
             <input
@@ -798,7 +788,8 @@ export const CreateListingPage: React.FC = () => {
       <section id="section-3" className="card" style={{ padding: 24, marginBottom: 20 }}>
         <h2 style={{ fontSize: 20, marginBottom: 12 }}>4. Photos</h2>
         <p className="text-sm muted" style={{ marginBottom: 16 }}>
-          Upload multiple images. The first image is set as the main photo. JPG, PNG, WebP up to 15MB each.
+          Upload multiple images. The first image is set as the main photo — drag any
+          photo into the first slot to make it the cover. JPG, PNG, WebP up to 15MB each.
         </p>
         <div
           onDragOver={(e) => e.preventDefault()}
@@ -893,8 +884,7 @@ export const CreateListingPage: React.FC = () => {
           </div>
         )}
         <p className="text-sm muted" style={{ marginTop: 8 }}>
-          Drag the thumbnails to reorder, or use the “Set main” button to make
-          one the cover. The order is saved automatically.
+          Drag the thumbnails to reorder — the first one automatically becomes the cover photo.
         </p>
       </section>
 
@@ -1002,6 +992,8 @@ function labelFor(m: ContactMethod): string {
     case "WHATSAPP": return "WhatsApp";
     case "VIBER": return "Viber";
     case "TELEGRAM": return "Telegram";
-    case "CHAT": return "In-app chat";
+    // Renamed from "In-app chat" — this is the built-in messaging on the
+    // website itself (/dashboard/messages), not a separate mobile app.
+    case "CHAT": return "Chat on site";
   }
 }

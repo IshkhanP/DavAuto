@@ -4,7 +4,7 @@ import type {
   AuthTokens, CarCard, CarDetail, Category, Conversation, Dealer, Location,
   Make, Message, Model, Notification, PaginatedResponse, Report, Role,
   SearchFilters, UserPrivate, UserPublic, PromotionPackage, Permission,
-  AdminUser, DashboardStats, AuditLog, SiteSetting,
+  AdminUser, DashboardStats, AuditLog, SiteSetting, CarDailyView,
 } from "@/types";
 
 export const authService = {
@@ -98,6 +98,12 @@ export const carsService = {
   },
   async mine(filters: { status?: string; page?: number; limit?: number } = {}): Promise<PaginatedResponse<CarCard>> {
     const res = await api.get("/cars/mine/all", { params: filters });
+    return res.data;
+  },
+  /** Per-day view counts for a listing — powers the "views today / this
+   * week" stats the seller sees on My Listings. Owner or admin only. */
+  async dailyViews(carId: string, days = 14): Promise<CarDailyView[]> {
+    const res = await api.get(`/cars/${carId}/views/daily`, { params: { days } });
     return res.data;
   },
 };

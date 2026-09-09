@@ -72,6 +72,11 @@ class AdminOut(ORMBase):
     last_login_ip: Optional[str] = None
     roles: List[str] = []
     created_at: datetime
+    # Added so the frontend (SuperAdminAdminsPage) can protect super-admin
+    # accounts from deletion/role-editing without guessing from the roles
+    # list. Previously this flag was referenced by the frontend but never
+    # actually populated by the backend, so it was always falsy.
+    is_super_admin: bool = False
 
 
 class AdminUserUpdate(BaseModel):

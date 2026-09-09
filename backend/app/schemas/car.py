@@ -1,5 +1,5 @@
 """Car / listing schemas."""
-from datetime import datetime
+from datetime import datetime, date
 from decimal import Decimal
 from typing import Optional, List
 from pydantic import BaseModel, Field, ConfigDict
@@ -211,3 +211,11 @@ class CarStatsOut(ORMBase):
     sold: int
     draft: int
     rejected: int
+
+
+class CarDailyViewOut(BaseModel):
+    """One day's worth of view counts for a listing, used to render the
+    "how many people saw your post today" statistic on the seller's
+    dashboard."""
+    view_date: date
+    count: int

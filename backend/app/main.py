@@ -17,7 +17,7 @@ from app.core.database import Base, engine, SessionLocal
 from app.models import (  # noqa: F401  ensures all models are registered
     User, Role, Permission, UserRole, RolePermission, RefreshToken,
     Category, Make, Model, Location,
-    Car, CarImage, CarVideo, CarFeature, Favorite,
+    Car, CarImage, CarVideo, CarFeature, Favorite, CarDailyView,
     Conversation, ConversationParticipant, Message, Notification,
     Dealer, DealerEmployee, Report, PromotionPackage, UserPromotion,
     Payment, Review, AuditLog, SiteSetting,

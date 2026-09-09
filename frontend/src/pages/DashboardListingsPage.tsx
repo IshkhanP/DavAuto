@@ -3,6 +3,8 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { carsService } from "@/services";
 import { useAsync } from "@/hooks/useAsync";
 import { EmptyState, ErrorState, LoadingBlock } from "@/components/States";
+import { QuickAddListingModal } from "@/components/QuickAddListingModal";
+import { ListingStatsModal } from "@/components/ListingStatsModal";
 import { formatCurrency, formatDate, formatMileage, statusLabel, timeAgo } from "@/utils/format";
 import type { CarCard as CarCardData, PaginatedResponse } from "@/types";
 import toast from "react-hot-toast";
@@ -12,6 +14,9 @@ export const DashboardListingsPage: React.FC = () => {
   const status = params.get("status") || undefined;
   const [page, setPage] = useState(1);
   const navigate = useNavigate();
+
+  const [showQuickAdd, setShowQuickAdd] = useState(false);
+  const [statsFor, setStatsFor] = useState<{ id: string; label: string } | null>(null);
 
   const { data, loading, error, reload } = useAsync<PaginatedResponse<CarCardData>>(
     () => carsService.mine({ status, page, limit: 12 }),
@@ -56,7 +61,12 @@ export const DashboardListingsPage: React.FC = () => {
           <h1>My Listings</h1>
           <p className="text-sm muted">Manage your vehicles.</p>
         </div>
-        <Link to="/dashboard/listings/new" className="btn btn-primary">+ New listing</Link>
+        <div className="row" style={{ gap: 8 }}>
+          <button className="btn btn-outline" onClick={() => setShowQuickAdd(true)}>
+            + Quick Add
+          </button>
+          <Link to="/dashboard/listings/new" className="btn btn-primary">+ New listing</Link>
+        </div>
       </div>
 
       <div className="row" style={{ gap: 6, marginBottom: 16, flexWrap: "wrap" }}>
@@ -78,7 +88,7 @@ export const DashboardListingsPage: React.FC = () => {
             />
           ) : (
             <div className="card" style={{ overflow: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 720 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 760 }}>
                 <thead>
                   <tr style={{ background: "var(--color-bg-soft)", textAlign: "left" }}>
                     <th style={th}>Car</th>
@@ -106,14 +116,23 @@ export const DashboardListingsPage: React.FC = () => {
                       </td>
                       <td style={td}>{formatCurrency(c.price, c.currency)}</td>
                       <td style={td}><StatusBadge status={c.status} /></td>
-                      <td style={td}>{c.views_count}</td>
+                      <td style={td}>
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          style={{ padding: "2px 6px" }}
+                          onClick={() => setStatsFor({ id: c.id, label: `${c.make} ${c.model}` })}
+                          title="See how many people viewed this listing per day"
+                        >
+                          {c.views_count} · Stats
+                        </button>
+                      </td>
                       <td style={td}>{c.favorites_count}</td>
                       <td style={td}>{timeAgo(c.published_at)}</td>
                       <td style={td}>
-                        <div style={{ display: "flex", gap: 4 }}>
+                        <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
                           <Link to={`/dashboard/listings/${c.id}/edit`} className="btn btn-ghost btn-sm">Edit</Link>
                           {c.status === "ACTIVE" && <button className="btn btn-ghost btn-sm" onClick={() => setStatus(c.id, "PAUSED")}>Pause</button>}
-                          {c.status === "PAUSED" && <button className="btn btn-ghost btn-sm" onClick={() => setStatus(c.id, "ACTIVE")}>Activate</button>}
+                          {(c.status === "PAUSED" || c.status === "DRAFT") && <button className="btn btn-ghost btn-sm" onClick={() => setStatus(c.id, "ACTIVE")}>{c.status === "DRAFT" ? "Publish" : "Activate"}</button>}
                           {c.status !== "SOLD" && <button className="btn btn-ghost btn-sm" onClick={() => setStatus(c.id, "SOLD")}>Mark sold</button>}
                           <button className="btn btn-ghost btn-sm" onClick={() => onDuplicate(c.id)}>Duplicate</button>
                           <button className="btn btn-ghost btn-sm" onClick={() => onDelete(c.id)} style={{ color: "var(--color-red)" }}>Delete</button>
@@ -138,6 +157,24 @@ export const DashboardListingsPage: React.FC = () => {
             </button>
           ))}
         </div>
+      )}
+
+      {showQuickAdd && (
+        <QuickAddListingModal
+          onClose={() => setShowQuickAdd(false)}
+          onCreated={(carId) => {
+            setShowQuickAdd(false);
+            navigate(`/dashboard/listings/${carId}/edit`);
+          }}
+        />
+      )}
+
+      {statsFor && (
+        <ListingStatsModal
+          carId={statsFor.id}
+          carLabel={statsFor.label}
+          onClose={() => setStatsFor(null)}
+        />
       )}
     </div>
   );

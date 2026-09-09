@@ -1,15 +1,16 @@
 """Public and authenticated car/listing endpoints."""
 from __future__ import annotations
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone, timedelta, date
 from typing import Optional, List
 import uuid as uuid_module
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.config import settings
-from app.models.car import Car
+from app.models.car import Car, CarImage, CarFeature, CarDailyView
 from app.models.catalog import Make, Model as CarModel, Category, Location
 from app.models.user import User
 from app.models.enums import CarStatus
@@ -17,7 +18,7 @@ from app.permissions.rbac import get_current_user, get_current_user_optional
 from app.repositories.car_repository import CarRepository
 from app.schemas.car import (
     CarCardOut, CarDetailOut, CarCreate, CarUpdate,
-    CarAdminOut, SellerSummary, StatusUpdateRequest,
+    CarAdminOut, SellerSummary, StatusUpdateRequest, CarDailyViewOut,
 )
 from app.schemas.common import PaginatedResponse
 from app.services.audit import log_action
@@ -265,12 +266,41 @@ def get_car(
         ):
             raise HTTPException(status_code=404, detail="Car not found")
 
-    # increment views asynchronously-safe (here synchronous)
+    # increment views asynchronously-safe (here synchronous). Owners viewing
+    # their own listing never count towards their own stats.
     if not current_user or current_user.id != car.seller_id:
         repo.increment_views(car.id)
         db.commit()
 
     return _to_detail(car)
+
+
+@router.get("/{car_id}/views/daily", response_model=List[CarDailyViewOut])
+def get_daily_views(
+    car_id: str,
+    days: int = Query(14, ge=1, le=90),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Per-day view counts for a listing, e.g. for a "views this week"
+    chart on the seller's dashboard. Owner or admin only."""
+    car = db.get(Car, uuid_module.UUID(car_id))
+    if not car:
+        raise HTTPException(status_code=404, detail="Car not found")
+    is_admin = any(r.role.slug in ("ADMIN", "SUPER_ADMIN") for r in user.roles)
+    if car.seller_id != user.id and not is_admin:
+        raise HTTPException(status_code=403, detail="Not allowed")
+
+    repo = CarRepository(db)
+    rows = repo.get_daily_views(car.id, days=days)
+    counts_by_date = {r.view_date: r.count for r in rows}
+
+    start = date.today() - timedelta(days=days - 1)
+    out = []
+    for i in range(days):
+        d = start + timedelta(days=i)
+        out.append(CarDailyViewOut(view_date=d, count=counts_by_date.get(d, 0)))
+    return out
 
 
 # ----- Authenticated endpoints (CRUD for owner) -----
@@ -339,6 +369,9 @@ async def create_car(
     db.add(car)
     db.flush()
 
+    # NOTE: CarFeature (and CarImage, used below in duplicate_car) were
+    # previously never imported in this file, so submitting a listing with
+    # any features filled in raised a NameError and the request failed.
     for f in payload.features or []:
         db.add(CarFeature(car_id=car.id, name=str(f.get("name", ""))[:80], value=f.get("value"), category=f.get("category")))
 
@@ -368,6 +401,8 @@ def update_car(
     for field, value in data.items():
         if field in ("category_id", "location_id") and value:
             value = uuid_module.UUID(value)
+        if field == "contact_methods" and value:
+            value = ",".join(value)
         setattr(car, field, value)
 
     db.commit()
